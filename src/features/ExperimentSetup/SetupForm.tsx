@@ -54,10 +54,10 @@ export const SetupForm: React.FC<SetupFormProps> = ({
     }));
   }, [selectedDecisionAttribute]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Update config whenever it changes and notify parent
+  React.useEffect(() => {
     onSubmit(config);
-  };
+  }, [config, onSubmit]);
 
   const renderTooltip = (text: string) => (
     <div className="group relative cursor-help">
@@ -83,7 +83,7 @@ export const SetupForm: React.FC<SetupFormProps> = ({
   );
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <div className="space-y-6">
       {renderFormSection(
         "Algorithm Selection",
         "Choose one or more algorithms to build your decision trees",
@@ -303,20 +303,7 @@ export const SetupForm: React.FC<SetupFormProps> = ({
         </div>
       )}
 
-      <div className="flex justify-end">
-        <button
-          type="submit"
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          disabled={
-            isDisabled || 
-            isLoading || 
-            !selectedDecisionAttribute || 
-            config.algorithms.length === 0
-          }
-        >
-          {isLoading ? 'Building Trees...' : 'Build Trees'}
-        </button>
-      </div>
-    </form>
+      {/* REMOVED: Build Trees button - now handled by parent ExperimentSetup */}
+    </div>
   );
 };

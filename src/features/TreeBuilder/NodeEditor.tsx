@@ -25,6 +25,7 @@ interface TestConfig {
   leftSplit?: number[];
   rightSplit?: number[];
   similarity?: number;
+  gainSimilarity?: number; // NEW: Similarity to Test 1
 }
 
 interface EnhancedAlternativeTest extends SplitTest {
@@ -33,6 +34,11 @@ interface EnhancedAlternativeTest extends SplitTest {
   leftSplit: number[];
   rightSplit: number[];
   similarity: number;
+}
+
+interface MultiTestMetrics {
+  entropy: number;
+  consistency: number;
 }
 
 export const NodeEditor: React.FC<NodeEditorProps> = ({ 
@@ -212,6 +218,124 @@ export const NodeEditor: React.FC<NodeEditorProps> = ({
     } catch (error) {
       console.warn('Error calculating test metrics:', error);
       return {};
+    }
+  };
+
+  // NEW: Calculate gain similarity between tests
+  const calculateGainSimilarity = (testIndex: number): number => {
+    if (testIndex === 0 || multiTestSize === 1) return 0; // No similarity for Test 1
+    
+    const test1 = testConfigs[0];
+    const currentTest = testConfigs[testIndex];
+    
+    if (!test1.attribute || !currentTest.attribute || !nodeInstances.length) return 0;
+    
+    try {
+      // Create SplitTest objects
+      const splitTest1: SplitTest = {
+        attribute: test1.attribute,
+        condition: test1.condition,
+        value: test1.value,
+        weight: test1.weight,
+        algorithm: test1.algorithm,
+        entropy: node.statistics.entropy,
+        isValueAttribute: test1.algorithm === 'TSP' || test1.algorithm === 'WTSP'
+      };
+      
+      const splitTestCurrent: SplitTest = {
+        attribute: currentTest.attribute,
+        condition: currentTest.condition,
+        value: currentTest.value,
+        weight: currentTest.weight,
+        algorithm: currentTest.algorithm,
+        entropy: node.statistics.entropy,
+        isValueAttribute: currentTest.algorithm === 'TSP' || currentTest.algorithm === 'WTSP'
+      };
+      
+      // Get splits for both tests
+      const split1 = TreeUtils.splitInstances(nodeInstances, splitTest1);
+      const splitCurrent = TreeUtils.splitInstances(nodeInstances, splitTestCurrent);
+      
+      // Calculate how many instances are classified the same way
+      let sameDecisions = 0;
+      const totalInstances = nodeInstances.length;
+      
+      nodeInstances.forEach(instance => {
+        const decision1 = TreeUtils.evaluate(instance, splitTest1);
+        const decisionCurrent = TreeUtils.evaluate(instance, splitTestCurrent);
+        if (decision1 === decisionCurrent) {
+          sameDecisions++;
+        }
+      });
+      
+      return totalInstances > 0 ? (sameDecisions / totalInstances) * 100 : 0;
+    } catch (error) {
+      console.warn('Error calculating gain similarity:', error);
+      return 0;
+    }
+  };
+
+  // NEW: Calculate multi-test consistency metrics
+  const calculateMultiTestMetrics = (): MultiTestMetrics => {
+    if (multiTestSize === 1 || !nodeInstances.length) {
+      return {
+        entropy: node.statistics.entropy,
+        consistency: 100
+      };
+    }
+    
+    try {
+      // Calculate overall entropy for the multi-test (same as node entropy)
+      const entropy = node.statistics.entropy;
+      
+      // Calculate consistency - how often all tests agree
+      let consistentDecisions = 0;
+      const totalInstances = nodeInstances.length;
+      
+      nodeInstances.forEach(instance => {
+        const decisions: boolean[] = [];
+        
+        // Get decision from each test
+        testConfigs.forEach(config => {
+          if (config.attribute && config.value) {
+            try {
+              const splitTest: SplitTest = {
+                attribute: config.attribute,
+                condition: config.condition,
+                value: config.value,
+                weight: config.weight,
+                algorithm: config.algorithm,
+                entropy: node.statistics.entropy,
+                isValueAttribute: config.algorithm === 'TSP' || config.algorithm === 'WTSP'
+              };
+              
+              const decision = TreeUtils.evaluate(instance, splitTest);
+              decisions.push(decision);
+            } catch (error) {
+              // Skip invalid tests
+            }
+          }
+        });
+        
+        // Check if all decisions are the same
+        if (decisions.length > 1) {
+          const firstDecision = decisions[0];
+          const allSame = decisions.every(d => d === firstDecision);
+          if (allSame) {
+            consistentDecisions++;
+          }
+        }
+      });
+      
+      const consistency = totalInstances > 0 ? (consistentDecisions / totalInstances) * 100 : 100;
+      
+      return { entropy, consistency };
+    } catch (error) {
+      console.warn('Error calculating multi-test metrics:', error);
+      return {
+        entropy: node.statistics.entropy,
+        consistency: 0
+      };
     }
   };
 
@@ -497,6 +621,11 @@ export const NodeEditor: React.FC<NodeEditorProps> = ({
       return calculateTestMetrics(testConfigs[activeTestTab]);
     }
   }, [editForm, testConfigs, activeTestTab, multiTestSize, nodeInstances]);
+
+  // NEW: Get multi-test metrics
+  const multiTestMetrics = useMemo(() => {
+    return calculateMultiTestMetrics();
+  }, [testConfigs, multiTestSize, nodeInstances]);
 
   return (
     <div className="space-y-6">
@@ -802,6 +931,21 @@ export const NodeEditor: React.FC<NodeEditorProps> = ({
                 </div>
               )}
 
+              {/* NEW: Gain Similarity Display - ONLY for multi-test and not Test 1 */}
+              {multiTestSize > 1 && activeTestTab > 0 && (
+                <div className="bg-orange-50 p-3 rounded border border-orange-100">
+                  <p className="text-sm font-medium text-orange-800">
+                    Gain Similarity vs Test 1: 
+                    <span className="ml-2 font-mono">
+                      {calculateGainSimilarity(activeTestTab).toFixed(1)}%
+                    </span>
+                  </p>
+                  <p className="text-xs text-orange-600 mt-1">
+                    Shows how many decisions match with Test 1
+                  </p>
+                </div>
+              )}
+
               <div className="bg-blue-50 p-3 rounded border border-blue-100">
                 <p className="text-sm font-medium">Test Preview:</p>
                 <p className="text-sm font-mono mt-1">{getTestPreview()}</p>
@@ -844,6 +988,34 @@ export const NodeEditor: React.FC<NodeEditorProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* NEW: Multi-Test Metrics - ONLY for multi-test */}
+              {multiTestSize > 1 && (
+                <div className="bg-purple-50 p-3 rounded border border-purple-100">
+                  <p className="text-sm font-medium text-purple-800 mb-2">Multi-Test Metrics:</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-purple-600">Multi-Test Entropy:</span>{" "}
+                      <span className="font-medium font-mono">
+                        {multiTestMetrics.entropy.toFixed(3)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-purple-600">Consistency:</span>{" "}
+                      <span className={`font-medium font-mono ${
+                        multiTestMetrics.consistency > 80 ? 'text-green-600' :
+                        multiTestMetrics.consistency > 60 ? 'text-yellow-600' :
+                        'text-red-600'
+                      }`}>
+                        {multiTestMetrics.consistency.toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-purple-600 mt-1">
+                    Consistency shows how often all tests agree on decisions
+                  </p>
+                </div>
+              )}
 
               <div className="flex justify-end space-x-2">
                 <button

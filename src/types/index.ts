@@ -36,6 +36,10 @@ export interface DataGroup {
   type: OmicsType | 'simple';
   attributes: string[];
   color?: string;
+  range?: {
+    start: number;
+    end: number;
+  };
 }
 
 export interface SplitTest {
@@ -79,6 +83,8 @@ export interface DecisionTree {
   id: string;
   root: Element;
   config: ExperimentConfig;
+  omicsType?: OmicsType | 'simple';
+  test?: DecisionTree; // For test tree
 }
 
 export interface ExperimentConfig {
@@ -121,6 +127,7 @@ export interface EvaluationResult {
   confusionMatrix: ConfusionMatrix;
   metrics: EvaluationMetrics;
   rocCurve?: ROCPoint[];
+  test?: EvaluationResult; // For test evaluation
 }
 
 export interface GeneAnnotation {

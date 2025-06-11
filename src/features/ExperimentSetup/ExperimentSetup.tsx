@@ -14,6 +14,7 @@ export const ExperimentSetup: React.FC = () => {
   const [groups, setGroups] = useState<DataGroup[]>([]);
   const [selectedDecisionAttribute, setSelectedDecisionAttribute] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'setup' | 'missing' | 'crossval' | 'parameters'>('setup');
+  const [currentConfig, setCurrentConfig] = useState<ExperimentConfig | null>(null);
 
   // Get all available attributes across all loaded datasets
   const allAttributes = React.useMemo(() => {
@@ -56,7 +57,20 @@ export const ExperimentSetup: React.FC = () => {
     return Object.values(omicsData).some(data => data?.test);
   }, [omicsData]);
 
-  const handleSubmit = async (config: ExperimentConfig) => {
+  const handleConfigUpdate = (config: ExperimentConfig) => {
+    setCurrentConfig({
+      ...config,
+      decisionAttribute: selectedDecisionAttribute,
+      fusionType: groups.length > 1 ? config.fusionType : 'multi-test'
+    });
+  };
+
+  const handleBuildTrees = async () => {
+    if (!currentConfig) {
+      toast.error('Please configure the experiment first');
+      return;
+    }
+
     if (Object.keys(omicsData).length === 0) {
       toast.error('Please upload at least one dataset');
       return;
@@ -73,11 +87,7 @@ export const ExperimentSetup: React.FC = () => {
     }
 
     try {
-      await buildTrees({
-        ...config,
-        decisionAttribute: selectedDecisionAttribute,
-        fusionType: groups.length > 1 ? config.fusionType : 'multi-test'
-      });
+      await buildTrees(currentConfig);
       toast.success('Trees built successfully');
       navigate('/builder');
     } catch (err) {
@@ -126,6 +136,14 @@ export const ExperimentSetup: React.FC = () => {
     }
     
     return prevTab.id;
+  };
+
+  const canBuildTrees = () => {
+    return Object.keys(omicsData).length > 0 && 
+           selectedDecisionAttribute && 
+           groups.length > 0 && 
+           currentConfig && 
+           currentConfig.algorithms.length > 0;
   };
 
   return (
@@ -435,7 +453,7 @@ export const ExperimentSetup: React.FC = () => {
               )}
               
               <SetupForm
-                onSubmit={handleSubmit}
+                onSubmit={handleConfigUpdate}
                 isLoading={isLoading}
                 attributes={allAttributes.filter(attr => attr.name !== selectedDecisionAttribute)}
                 isDisabled={Object.keys(omicsData).length === 0}
@@ -473,13 +491,12 @@ export const ExperimentSetup: React.FC = () => {
               </button>
             ) : (
               <button
-                onClick={() => {
-                  // This will be handled by the SetupForm component
-                }}
-                disabled={!canProceedToNext(activeTab)}
-                className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleBuildTrees}
+                disabled={!canBuildTrees() || isLoading}
+                className="px-6 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                Build Trees
+                <TreePine size={16} />
+                {isLoading ? 'Building Trees...' : 'Build Trees'}
               </button>
             )}
           </div>

@@ -48,13 +48,6 @@ export const TestTree: React.FC<TestTreeProps> = ({ tree }) => {
           </div>
         </div>
       </div>
-      
-      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm">
-        <p className="mb-2 font-medium">Tree Structure Preview</p>
-        <pre className="text-xs overflow-x-auto h-40 bg-white p-2 rounded border border-gray-200">
-          {JSON.stringify(tree.root, null, 2)}
-        </pre>
-      </div>
     </div>
   );
 };

@@ -35,8 +35,8 @@ interface OmicsDataState {
 interface TreeEngineContextType {
   engine: TreeEngine | null;
   omicsData: Partial<Record<OmicsType | 'simple', OmicsDataState>>;
-  trees: Partial<Record<OmicsType | 'simple', DecisionTree>>;
-  evaluations: Partial<Record<OmicsType | 'simple', EvaluationResult>>;
+  trees: Partial<Record<OmicsType | 'simple', DecisionTree & { test?: DecisionTree }>>;
+  evaluations: Partial<Record<OmicsType | 'simple', EvaluationResult & { test?: EvaluationResult }>>;
   setOmicsData: (omicsType: OmicsType | 'simple', dataType: 'training' | 'test', data: Dataset) => void;
   buildTrees: (config: ExperimentConfig) => Promise<void>;
   applyDistribution: (nodeId: string, test: SplitTest, omicsType: OmicsType | 'simple') => Promise<void>;
@@ -90,8 +90,8 @@ const combineOmicsPredictions = (
 export const TreeEngineProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [engines, setEngines] = useState<Partial<Record<OmicsType | 'simple', TreeEngine>>>({});
   const [omicsData, setOmicsData] = useState<Partial<Record<OmicsType | 'simple', OmicsDataState>>>({});
-  const [trees, setTrees] = useState<Partial<Record<OmicsType | 'simple', DecisionTree>>>({});
-  const [evaluations, setEvaluations] = useState<Partial<Record<OmicsType | 'simple', EvaluationResult>>>({});
+  const [trees, setTrees] = useState<Partial<Record<OmicsType | 'simple', DecisionTree & { test?: DecisionTree }>>>({});
+  const [evaluations, setEvaluations] = useState<Partial<Record<OmicsType | 'simple', EvaluationResult & { test?: EvaluationResult }>>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -115,16 +115,19 @@ export const TreeEngineProvider: React.FC<{ children: ReactNode }> = ({ children
 
     try {
       const newEngines: Partial<Record<OmicsType | 'simple', TreeEngine>> = {};
-      const newTrees: Partial<Record<OmicsType | 'simple', DecisionTree>> = {};
-      const newEvaluations: Partial<Record<OmicsType | 'simple', EvaluationResult>> = {};
+      const newTrees: Partial<Record<OmicsType | 'simple', DecisionTree & { test?: DecisionTree }>> = {};
+      const newEvaluations: Partial<Record<OmicsType | 'simple', EvaluationResult & { test?: EvaluationResult }>> = {};
 
       // Handle single dataset case
       if (Object.keys(omicsData).length === 1 || config.fusionType === 'multi-test') {
-        const mainData = config.fusionType === 'multi-test' 
-          ? combineDatasets(Object.values(omicsData).map(d => d.training!))
-          : omicsData[Object.keys(omicsData)[0]]?.training;
+        const mainDataState = config.fusionType === 'multi-test' 
+          ? Object.values(omicsData)[0]
+          : omicsData[Object.keys(omicsData)[0]];
 
-        if (!mainData) throw new Error('No training data available');
+        if (!mainDataState?.training) throw new Error('No training data available');
+
+        const mainData = mainDataState.training;
+        const testData = mainDataState.test;
 
         const updatedData = {
           ...mainData,
@@ -141,18 +144,42 @@ export const TreeEngineProvider: React.FC<{ children: ReactNode }> = ({ children
         const evaluation = await engine.evaluateTree(updatedData.instances);
 
         newEngines['simple'] = engine;
-        newTrees['simple'] = tree;
-        newEvaluations['simple'] = evaluation;
+        newTrees['simple'] = { ...tree };
+        newEvaluations['simple'] = { ...evaluation };
+
+        // Build test tree if test data exists
+        if (testData) {
+          const updatedTestData = {
+            ...testData,
+            decisionAttribute: config.decisionAttribute,
+            instances: testData.instances.map(instance => ({
+              ...instance,
+              class: instance.values[config.decisionAttribute]
+            }))
+          };
+
+          const testTree = await mainAlgorithm.buildTree(updatedTestData.instances, config);
+          const testEvaluation = await engine.evaluateTree(updatedTestData.instances);
+
+          newTrees['simple'] = {
+            ...newTrees['simple']!,
+            test: testTree
+          };
+          newEvaluations['simple'] = {
+            ...newEvaluations['simple']!,
+            test: testEvaluation
+          };
+        }
       } 
       // Handle multi-tree fusion
       else {
-        for (const [type, data] of Object.entries(omicsData)) {
-          if (!data?.training) continue;
+        for (const [type, dataState] of Object.entries(omicsData)) {
+          if (!dataState?.training) continue;
 
           const updatedData = {
-            ...data.training,
+            ...dataState.training,
             decisionAttribute: config.decisionAttribute,
-            instances: data.training.instances.map(instance => ({
+            instances: dataState.training.instances.map(instance => ({
               ...instance,
               class: instance.values[config.decisionAttribute]
             }))
@@ -164,8 +191,32 @@ export const TreeEngineProvider: React.FC<{ children: ReactNode }> = ({ children
           const evaluation = await engine.evaluateTree(updatedData.instances);
 
           newEngines[type] = engine;
-          newTrees[type] = tree;
-          newEvaluations[type] = evaluation;
+          newTrees[type] = { ...tree };
+          newEvaluations[type] = { ...evaluation };
+
+          // Build test tree if test data exists
+          if (dataState.test) {
+            const updatedTestData = {
+              ...dataState.test,
+              decisionAttribute: config.decisionAttribute,
+              instances: dataState.test.instances.map(instance => ({
+                ...instance,
+                class: instance.values[config.decisionAttribute]
+              }))
+            };
+
+            const testTree = await mainAlgorithm.buildTree(updatedTestData.instances, config);
+            const testEvaluation = await engine.evaluateTree(updatedTestData.instances);
+
+            newTrees[type] = {
+              ...newTrees[type]!,
+              test: testTree
+            };
+            newEvaluations[type] = {
+              ...newEvaluations[type]!,
+              test: testEvaluation
+            };
+          }
         }
       }
 

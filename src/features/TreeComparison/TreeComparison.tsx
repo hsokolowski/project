@@ -5,16 +5,20 @@ import { TestTree } from './TestTree';
 import { useTreeEngine } from '../../lib/engine/TreeEngineContext';
 import { TreeCanvas } from '../TreeBuilder/TreeCanvas';
 import { FlowTree } from '../TreeBuilder/FlowTree';
-import { Layout } from 'lucide-react';
+import { Layout, Download, Code } from 'lucide-react';
 
 export const TreeComparison: React.FC = () => {
   const { trees, evaluations, isLoading } = useTreeEngine();
   const [viewMode, setViewMode] = useState<'canvas' | 'flow'>('canvas');
+  const [showStructure, setShowStructure] = useState<{
+    training: boolean;
+    test: boolean;
+  }>({ training: false, test: false });
   
   const mainTree = trees['simple'] || trees[Object.keys(trees)[0]];
   const mainEvaluation = evaluations['simple'] || evaluations[Object.keys(evaluations)[0]];
-  const testTree = trees['simple']?.test || trees[Object.keys(trees)[0]]?.test;
-  const testEvaluation = evaluations['simple']?.test || evaluations[Object.keys(evaluations)[0]]?.test;
+  const testTree = mainTree?.test;
+  const testEvaluation = mainEvaluation?.test;
   
   if (isLoading) {
     return (
@@ -38,6 +42,18 @@ export const TreeComparison: React.FC = () => {
       </Card>
     );
   }
+
+  const downloadTreeStructure = (tree: any, filename: string) => {
+    const dataStr = JSON.stringify(tree, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    
+    const exportFileDefaultName = `${filename}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+  };
   
   return (
     <div className="space-y-6">
@@ -75,6 +91,34 @@ export const TreeComparison: React.FC = () => {
                 </div>
               )}
             </div>
+            
+            {/* Tree Structure Preview - moved below visualization */}
+            <div className="border-t pt-4">
+              <div className="flex items-center justify-between mb-2">
+                <button
+                  onClick={() => setShowStructure(prev => ({ ...prev, training: !prev.training }))}
+                  className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800"
+                >
+                  <Code size={16} />
+                  {showStructure.training ? 'Hide' : 'Show'} Tree Structure
+                </button>
+                <button
+                  onClick={() => downloadTreeStructure(mainTree, 'training-tree-structure')}
+                  className="flex items-center gap-2 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded"
+                >
+                  <Download size={14} />
+                  Download JSON
+                </button>
+              </div>
+              
+              {showStructure.training && (
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm">
+                  <pre className="text-xs overflow-x-auto h-40 bg-white p-2 rounded border border-gray-200">
+                    {JSON.stringify(mainTree.root, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
           </div>
         </Card>
         
@@ -99,6 +143,34 @@ export const TreeComparison: React.FC = () => {
                 ) : (
                   <div className="p-4">
                     <FlowTree node={testTree.root} />
+                  </div>
+                )}
+              </div>
+              
+              {/* Tree Structure Preview - moved below visualization */}
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <button
+                    onClick={() => setShowStructure(prev => ({ ...prev, test: !prev.test }))}
+                    className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800"
+                  >
+                    <Code size={16} />
+                    {showStructure.test ? 'Hide' : 'Show'} Tree Structure
+                  </button>
+                  <button
+                    onClick={() => downloadTreeStructure(testTree, 'test-tree-structure')}
+                    className="flex items-center gap-2 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded"
+                  >
+                    <Download size={14} />
+                    Download JSON
+                  </button>
+                </div>
+                
+                {showStructure.test && (
+                  <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm">
+                    <pre className="text-xs overflow-x-auto h-40 bg-white p-2 rounded border border-gray-200">
+                      {JSON.stringify(testTree.root, null, 2)}
+                    </pre>
                   </div>
                 )}
               </div>

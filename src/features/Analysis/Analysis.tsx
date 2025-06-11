@@ -13,7 +13,7 @@ export const Analysis: React.FC = () => {
   const mainTree = trees['simple'] || trees[Object.keys(trees)[0]];
   const mainEvaluation = evaluations['simple'] || evaluations[Object.keys(evaluations)[0]];
   const mainData = omicsData['simple']?.training || omicsData[Object.keys(omicsData)[0]]?.training;
-  const testEvaluation = evaluations['simple']?.test || evaluations[Object.keys(evaluations)[0]]?.test;
+  const testEvaluation = mainEvaluation?.test;
   
   if (isLoading) {
     return (
