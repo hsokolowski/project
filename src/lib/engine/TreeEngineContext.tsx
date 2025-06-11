@@ -38,6 +38,7 @@ interface TreeEngineContextType {
   trees: Partial<Record<OmicsType | 'simple', DecisionTree & { test?: DecisionTree }>>;
   evaluations: Partial<Record<OmicsType | 'simple', EvaluationResult & { test?: EvaluationResult }>>;
   setOmicsData: (omicsType: OmicsType | 'simple', dataType: 'training' | 'test', data: Dataset) => void;
+  clearAllData: () => void; // NEW: Clear all data function
   buildTrees: (config: ExperimentConfig) => Promise<void>;
   applyDistribution: (nodeId: string, test: SplitTest, omicsType: OmicsType | 'simple') => Promise<void>;
   rebuildSubtree: (nodeId: string, algorithm: AlgorithmType, omicsType: OmicsType | 'simple', test?: SplitTest) => Promise<void>;
@@ -107,6 +108,15 @@ export const TreeEngineProvider: React.FC<{ children: ReactNode }> = ({ children
         [dataType]: data
       }
     }));
+  }, []);
+
+  // NEW: Clear all data function
+  const clearAllData = useCallback(() => {
+    setOmicsData({});
+    setEngines({});
+    setTrees({});
+    setEvaluations({});
+    setError(null);
   }, []);
 
   const buildTrees = useCallback(async (config: ExperimentConfig) => {
@@ -395,6 +405,7 @@ export const TreeEngineProvider: React.FC<{ children: ReactNode }> = ({ children
       trees,
       evaluations,
       setOmicsData: updateOmicsData,
+      clearAllData, // NEW: Expose clear function
       buildTrees,
       applyDistribution,
       rebuildSubtree,
@@ -410,6 +421,7 @@ export const TreeEngineProvider: React.FC<{ children: ReactNode }> = ({ children
       trees,
       evaluations,
       updateOmicsData,
+      clearAllData, // NEW: Include in dependencies
       buildTrees,
       applyDistribution,
       rebuildSubtree,

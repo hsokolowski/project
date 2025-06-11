@@ -4,10 +4,10 @@ import { Card } from '../../components/Card';
 import { useTreeEngine } from '../../lib/engine/TreeEngineContext';
 import { parseCSV } from '../../lib/utils/csvParser';
 import { mockSimpleTrainingData, mockSimpleTestData, mockBioTrainingData, mockBioTestData } from '../../lib/utils/mockData';
-import { FileSpreadsheet, Dna } from 'lucide-react';
+import { FileSpreadsheet, Dna, FlaskConical } from 'lucide-react';
 
 export const DataUpload: React.FC = () => {
-  const { setOmicsData, isLoading } = useTreeEngine();
+  const { setOmicsData, clearAllData, isLoading } = useTreeEngine();
   const [error, setError] = useState<string | null>(null);
   const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({});
 
@@ -28,13 +28,22 @@ export const DataUpload: React.FC = () => {
   };
 
   const loadSimpleDemoData = () => {
+    clearAllData(); // Reset state first
     setOmicsData('simple', 'training', mockSimpleTrainingData);
     setOmicsData('simple', 'test', mockSimpleTestData);
   };
 
   const loadBioDemoData = () => {
+    clearAllData(); // Reset state first
     setOmicsData('simple', 'training', mockBioTrainingData);
     setOmicsData('simple', 'test', mockBioTestData);
+  };
+
+  // NEW: Load only bio training data for cross-validation
+  const loadBioTrainingOnly = () => {
+    clearAllData(); // Reset state first
+    setOmicsData('simple', 'training', mockBioTrainingData);
+    // Intentionally NOT loading test data to trigger cross-validation
   };
 
   return (
@@ -82,6 +91,13 @@ export const DataUpload: React.FC = () => {
           >
             <Dna size={16} />
             Load Bio Demo Data
+          </button>
+          <button
+            onClick={loadBioTrainingOnly}
+            className="px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 inline-flex items-center gap-2"
+          >
+            <FlaskConical size={16} />
+            Bio Training Only
           </button>
         </div>
       </div>
