@@ -8,6 +8,7 @@ interface DataViewerProps {
   testAttribute?: string;
   testValue?: any;
   testCondition?: string;
+  nodeId?: string;
 }
 
 export const DataViewer: React.FC<DataViewerProps> = ({
@@ -15,7 +16,8 @@ export const DataViewer: React.FC<DataViewerProps> = ({
   attributes,
   testAttribute,
   testValue,
-  testCondition
+  testCondition,
+  nodeId
 }) => {
   const [selectedAttributes, setSelectedAttributes] = useState<Set<string>>(
     new Set(attributes.slice(0, 5).map(attr => attr.name))
@@ -71,7 +73,7 @@ export const DataViewer: React.FC<DataViewerProps> = ({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
           <input
@@ -85,7 +87,7 @@ export const DataViewer: React.FC<DataViewerProps> = ({
         
         <button
           onClick={() => setShowColumnSelector(!showColumnSelector)}
-          className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded"
+          className="ml-4 flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded"
         >
           <Settings2 size={16} />
           Columns

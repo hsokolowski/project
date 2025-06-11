@@ -9,19 +9,13 @@ import { DataViewer } from './DataViewer';
 import { Layout } from 'lucide-react';
 
 export const TreeBuilder: React.FC = () => {
-  const { trainTree, isLoading, makeLeaf, trainingData } = useTreeEngine();
+  const { trees, isLoading, makeLeaf, omicsData } = useTreeEngine();
   const [selectedNode, setSelectedNode] = useState<Element | null>(null);
   const [viewMode, setViewMode] = useState<'canvas' | 'flow'>('canvas');
-
-  const handleMakeLeaf = async (node: Element) => {
-    try {
-      await makeLeaf(node.id);
-      setSelectedNode(null);
-    } catch (err) {
-      console.error('Failed to convert node to leaf:', err);
-    }
-  };
-
+  
+  const mainTree = trees['simple'] || trees[Object.keys(trees)[0]];
+  const mainType = mainTree?.omicsType || 'simple';
+  
   if (isLoading) {
     return (
       <Card title="Tree Builder">
@@ -31,8 +25,8 @@ export const TreeBuilder: React.FC = () => {
       </Card>
     );
   }
-
-  if (!trainTree) {
+  
+  if (!mainTree) {
     return (
       <Card title="Tree Builder">
         <div className="flex flex-col items-center justify-center h-64 text-center">
@@ -45,10 +39,19 @@ export const TreeBuilder: React.FC = () => {
     );
   }
 
+  const handleMakeLeaf = async (node: Element) => {
+    try {
+      await makeLeaf(node.id, mainType);
+      setSelectedNode(null);
+    } catch (err) {
+      console.error('Failed to convert node to leaf:', err);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <Card 
-        title={`Decision Tree ${trainTree?.config?.algorithms ? `(${trainTree.config.algorithms.join('+')})` : ''}`}
+        title={`Decision Tree ${mainTree?.config?.algorithms ? `(${mainTree.config.algorithms.join('+')})` : ''}`}
         footer={
           <button
             onClick={() => setViewMode(mode => mode === 'canvas' ? 'flow' : 'canvas')}
@@ -62,14 +65,14 @@ export const TreeBuilder: React.FC = () => {
         <div className="h-[600px] overflow-auto bg-gray-50 rounded border border-gray-200">
           {viewMode === 'canvas' ? (
             <TreeCanvas
-              tree={trainTree}
+              tree={mainTree}
               onNodeSelect={setSelectedNode}
               onMakeLeaf={handleMakeLeaf}
             />
           ) : (
             <div className="p-4">
               <FlowTree 
-                node={trainTree.root} 
+                node={mainTree.root} 
                 onNodeSelect={setSelectedNode}
                 onMakeLeaf={handleMakeLeaf}
               />
@@ -78,12 +81,14 @@ export const TreeBuilder: React.FC = () => {
         </div>
       </Card>
 
-      {selectedNode  && (
-        <>
-          <Card title="Node Editor">
-            <NodeEditor node={selectedNode} tree={trainTree} />
-          </Card>
-        </>
+      {selectedNode && (
+        <Card title="Node Editor">
+          <NodeEditor 
+            node={selectedNode} 
+            tree={mainTree}
+            omicsType={mainType}
+          />
+        </Card>
       )}
     </div>
   );

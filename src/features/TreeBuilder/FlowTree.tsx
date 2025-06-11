@@ -17,7 +17,7 @@ export const FlowTree: React.FC<FlowTreeProps> = ({
   onNodeSelect,
   onMakeLeaf
 }) => {
-  const { unfoldLeafOnce, unfoldLeafFully, trainingData } = useTreeEngine();
+  const { unfoldLeafOnce, unfoldLeafFully, omicsData, engine } = useTreeEngine();
   const [showData, setShowData] = useState(false);
 
   const handleUnfoldOnce = async () => {

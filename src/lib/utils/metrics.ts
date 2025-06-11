@@ -1,10 +1,7 @@
 import { Instance, ConfusionMatrix, EvaluationMetrics, ROCPoint } from '../../types';
 
-/**
- * Creates a confusion matrix from actual and predicted class values
- */
 export const createConfusionMatrix = (
-  actual: string[], 
+  actual: string[],
   predicted: string[]
 ): ConfusionMatrix => {
   if (actual.length !== predicted.length) {
@@ -30,9 +27,6 @@ export const createConfusionMatrix = (
   return { matrix, classLabels };
 };
 
-/**
- * Calculates evaluation metrics from a confusion matrix
- */
 export const calculateMetrics = (
   confusionMatrix: ConfusionMatrix
 ): EvaluationMetrics => {
@@ -102,9 +96,6 @@ export const calculateMetrics = (
   };
 };
 
-/**
- * Generates ROC curve points for binary or multiclass classification
- */
 export const generateROCCurve = (
   actual: string[],
   predicted: number[],
@@ -148,9 +139,6 @@ export const generateROCCurve = (
   return points;
 };
 
-/**
- * Generates ROC curves for multiclass classification using one-vs-rest approach
- */
 export const generateMulticlassROC = (
   actual: string[],
   predictedProbs: Record<string, number[]>,
@@ -171,9 +159,6 @@ export const generateMulticlassROC = (
   return curves;
 };
 
-/**
- * Calculates the Area Under the ROC Curve (AUC)
- */
 export const calculateAUC = (rocPoints: ROCPoint[]): number => {
   let auc = 0;
   for (let i = 1; i < rocPoints.length; i++) {

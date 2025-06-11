@@ -7,8 +7,13 @@ import { SHAPSummary } from './SHAPSummary';
 import { ConfusionMatrix } from './ConfusionMatrix';
 
 export const Analysis: React.FC = () => {
-  const { trainEvaluation, testEvaluation, trainTree, trainingData, isLoading } = useTreeEngine();
+  const { evaluations, trees, omicsData, isLoading } = useTreeEngine();
   const [activeTab, setActiveTab] = useState<'confusion' | 'heatmap' | 'roc' | 'shap'>('confusion');
+  
+  const mainTree = trees['simple'] || trees[Object.keys(trees)[0]];
+  const mainEvaluation = evaluations['simple'] || evaluations[Object.keys(evaluations)[0]];
+  const mainData = omicsData['simple']?.training || omicsData[Object.keys(omicsData)[0]]?.training;
+  const testEvaluation = evaluations['simple']?.test || evaluations[Object.keys(evaluations)[0]]?.test;
   
   if (isLoading) {
     return (
@@ -20,7 +25,7 @@ export const Analysis: React.FC = () => {
     );
   }
   
-  if (!trainEvaluation) {
+  if (!mainEvaluation) {
     return (
       <Card title="Analysis">
         <div className="flex flex-col items-center justify-center h-64 text-center">
@@ -32,6 +37,10 @@ export const Analysis: React.FC = () => {
       </Card>
     );
   }
+
+  // For multi-tree fusion, show combined metrics
+  const showCombinedMetrics = mainTree?.config.fusionType === 'multi-tree' && 
+    Object.keys(evaluations).length > 1;
   
   return (
     <Card>
@@ -62,28 +71,56 @@ export const Analysis: React.FC = () => {
       
       <div>
         {activeTab === 'confusion' && (
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-base font-medium mb-2">Training Data Evaluation</h3>
-              <ConfusionMatrix result={trainEvaluation} />
-            </div>
-            
-            {testEvaluation && (
-              <div>
-                <h3 className="text-base font-medium mb-2">Test Data Evaluation</h3>
-                <ConfusionMatrix result={testEvaluation} />
-              </div>
+          <div className="space-y-8">
+            {showCombinedMetrics ? (
+              // Show individual matrices for each omics type
+              Object.entries(evaluations).map(([type, evaluation]) => (
+                <div key={type} className="space-y-4">
+                  <h3 className="text-lg font-medium text-gray-900">
+                    {type === 'simple' ? 'Simple Dataset' : `${type} Data`}
+                  </h3>
+                  <div className="bg-white p-6 rounded-lg border border-gray-200">
+                    <ConfusionMatrix result={evaluation} />
+                  </div>
+                  {evaluation.test && (
+                    <div className="mt-6">
+                      <h4 className="text-base font-medium text-gray-700 mb-4">Test Data Results</h4>
+                      <div className="bg-white p-6 rounded-lg border border-gray-200">
+                        <ConfusionMatrix result={evaluation.test} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : (
+              <>
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium text-gray-900">Training Data Evaluation</h3>
+                  <div className="bg-white p-6 rounded-lg border border-gray-200">
+                    <ConfusionMatrix result={mainEvaluation} />
+                  </div>
+                </div>
+                
+                {testEvaluation && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-medium text-gray-900">Test Data Evaluation</h3>
+                    <div className="bg-white p-6 rounded-lg border border-gray-200">
+                      <ConfusionMatrix result={testEvaluation} />
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
         
         {activeTab === 'heatmap' && (
           <div>
-            {trainingData ? (
-              <Heatmap data={trainingData} />
+            {mainData?.isGenomic ? (
+              <Heatmap data={mainData} />
             ) : (
               <div className="flex items-center justify-center h-64">
-                <p className="text-gray-500">No data available for heatmap visualization</p>
+                <p className="text-gray-500">Heatmap visualization is only available for genomic data</p>
               </div>
             )}
           </div>
@@ -91,40 +128,56 @@ export const Analysis: React.FC = () => {
         
         {activeTab === 'roc' && (
           <div className="space-y-6">
-            {trainEvaluation && (
-              <div>
-                <h3 className="text-base font-medium mb-2">Training ROC Curve</h3>
-                {trainEvaluation.rocCurve ? (
-                  <ROCChart 
-                    data={trainEvaluation.rocCurve} 
-                    auc={trainEvaluation.metrics.macroAvgF1} 
-                    isMultiClass={trainEvaluation.confusionMatrix.classLabels.length > 2}
-                  />
-                ) : (
-                  <div className="bg-yellow-50 text-yellow-700 p-4 rounded-lg border border-yellow-200">
-                    <p>ROC curve is not available for this model configuration.</p>
-                    <p className="text-sm mt-1">
-                      This could be due to:
-                      <ul className="list-disc list-inside mt-1">
-                        <li>Missing probability scores for predictions</li>
-                        <li>Insufficient data points for reliable curve generation</li>
-                        <li>Current model configuration not supporting probability outputs</li>
-                      </ul>
-                    </p>
+            {showCombinedMetrics ? (
+              // Show ROC curves for each omics type
+              Object.entries(evaluations).map(([type, evaluation]) => (
+                evaluation.rocCurve && (
+                  <div key={type}>
+                    <h3 className="text-base font-medium mb-2">
+                      {type === 'simple' ? 'Simple Dataset' : `${type} Data`} ROC Curve
+                    </h3>
+                    <ROCChart 
+                      data={evaluation.rocCurve} 
+                      auc={evaluation.metrics.macroAvgF1} 
+                      isMultiClass={evaluation.confusionMatrix.classLabels.length > 2}
+                    />
+                    {evaluation.test?.rocCurve && (
+                      <div className="mt-6">
+                        <h4 className="text-base font-medium mb-2">Test Data ROC Curve</h4>
+                        <ROCChart 
+                          data={evaluation.test.rocCurve} 
+                          auc={evaluation.test.metrics.macroAvgF1} 
+                          isMultiClass={evaluation.test.confusionMatrix.classLabels.length > 2}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              ))
+            ) : (
+              <>
+                {mainEvaluation.rocCurve && (
+                  <div>
+                    <h3 className="text-base font-medium mb-2">Training ROC Curve</h3>
+                    <ROCChart 
+                      data={mainEvaluation.rocCurve} 
+                      auc={mainEvaluation.metrics.macroAvgF1} 
+                      isMultiClass={mainEvaluation.confusionMatrix.classLabels.length > 2}
+                    />
                   </div>
                 )}
-              </div>
-            )}
-            
-            {testEvaluation && testEvaluation.rocCurve && (
-              <div>
-                <h3 className="text-base font-medium mb-2">Test ROC Curve</h3>
-                <ROCChart 
-                  data={testEvaluation.rocCurve} 
-                  auc={testEvaluation.metrics.macroAvgF1}
-                  isMultiClass={testEvaluation.confusionMatrix.classLabels.length > 2}
-                />
-              </div>
+                
+                {testEvaluation?.rocCurve && (
+                  <div>
+                    <h3 className="text-base font-medium mb-2">Test ROC Curve</h3>
+                    <ROCChart 
+                      data={testEvaluation.rocCurve} 
+                      auc={testEvaluation.metrics.macroAvgF1}
+                      isMultiClass={testEvaluation.confusionMatrix.classLabels.length > 2}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

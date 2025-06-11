@@ -16,7 +16,9 @@ import {
   Element,
   Instance,
   AlgorithmType,
-  EvaluationResult
+  EvaluationResult,
+  OmicsType,
+  VotingStrategy
 } from '../../types';
 import { TreeEngine } from './TreeEngine';
 import { IDecisionAlgorithm } from './interfaces/IDecisionAlgorithm';
@@ -25,22 +27,23 @@ import { TSP } from '../algorithms/TSP';
 import { WTSP } from '../algorithms/WTSP';
 import { TreeUtils } from '../utils/TreeUtils';
 
+interface OmicsDataState {
+  training: Dataset | null;
+  test: Dataset | null;
+}
+
 interface TreeEngineContextType {
   engine: TreeEngine | null;
-  trainingData: Dataset | null;
-  testData: Dataset | null;
-  trainTree: DecisionTree | null;
-  testTree: DecisionTree | null;
-  trainEvaluation: EvaluationResult | null;
-  testEvaluation: EvaluationResult | null;
-  setTrainingData: (data: Dataset) => void;
-  setTestData: (data: Dataset) => void;
+  omicsData: Partial<Record<OmicsType | 'simple', OmicsDataState>>;
+  trees: Partial<Record<OmicsType | 'simple', DecisionTree>>;
+  evaluations: Partial<Record<OmicsType | 'simple', EvaluationResult>>;
+  setOmicsData: (omicsType: OmicsType | 'simple', dataType: 'training' | 'test', data: Dataset) => void;
   buildTrees: (config: ExperimentConfig) => Promise<void>;
-  applyDistribution: (nodeId: string, test: SplitTest) => Promise<void>;
-  rebuildSubtree: (nodeId: string, algorithm: AlgorithmType, test?: SplitTest) => Promise<void>;
-  makeLeaf: (nodeId: string) => void;
-  unfoldLeafOnce: (nodeId: string, algorithm: AlgorithmType) => Promise<void>;
-  unfoldLeafFully: (nodeId: string, algorithm: AlgorithmType) => Promise<void>;
+  applyDistribution: (nodeId: string, test: SplitTest, omicsType: OmicsType | 'simple') => Promise<void>;
+  rebuildSubtree: (nodeId: string, algorithm: AlgorithmType, omicsType: OmicsType | 'simple', test?: SplitTest) => Promise<void>;
+  makeLeaf: (nodeId: string, omicsType: OmicsType | 'simple') => void;
+  unfoldLeafOnce: (nodeId: string, algorithm: AlgorithmType, omicsType: OmicsType | 'simple') => Promise<void>;
+  unfoldLeafFully: (nodeId: string, algorithm: AlgorithmType, omicsType: OmicsType | 'simple') => Promise<void>;
   isLoading: boolean;
   error: string | null;
 }
@@ -53,276 +56,294 @@ const algorithms: Record<string, IDecisionAlgorithm> = {
   'WTSP': new WTSP()
 };
 
+const combineOmicsPredictions = (
+  predictions: Record<string, string>,
+  weights: Record<string, number>,
+  strategy: VotingStrategy
+): string => {
+  const weightedVotes: Record<string, number> = {};
+  
+  Object.entries(predictions).forEach(([type, prediction]) => {
+    const weight = weights[type] || 1;
+    weightedVotes[prediction] = (weightedVotes[prediction] || 0) + weight;
+  });
+
+  const sortedPredictions = Object.entries(weightedVotes)
+    .sort(([, a], [, b]) => b - a);
+
+  switch (strategy) {
+    case 'unanimous':
+      return Object.keys(weightedVotes).length === 1 ? 
+        sortedPredictions[0][0] : 'Undecided';
+    
+    case 'weighted':
+      return sortedPredictions[0][0];
+    
+    case 'majority':
+    default:
+      const totalVotes = Object.values(weightedVotes).reduce((a, b) => a + b, 0);
+      return sortedPredictions[0][1] > totalVotes / 2 ? 
+        sortedPredictions[0][0] : 'Undecided';
+  }
+};
+
 export const TreeEngineProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [engine, setEngine] = useState<TreeEngine | null>(null);
-  const [trainingData, setTrainingData] = useState<Dataset | null>(null);
-  const [testData, setTestData] = useState<Dataset | null>(null);
-  const [trainTree, setTrainTree] = useState<DecisionTree | null>(null);
-  const [testTree, setTestTree] = useState<DecisionTree | null>(null);
-  const [trainEvaluation, setTrainEvaluation] = useState<EvaluationResult | null>(null);
-  const [testEvaluation, setTestEvaluation] = useState<EvaluationResult | null>(null);
+  const [engines, setEngines] = useState<Partial<Record<OmicsType | 'simple', TreeEngine>>>({});
+  const [omicsData, setOmicsData] = useState<Partial<Record<OmicsType | 'simple', OmicsDataState>>>({});
+  const [trees, setTrees] = useState<Partial<Record<OmicsType | 'simple', DecisionTree>>>({});
+  const [evaluations, setEvaluations] = useState<Partial<Record<OmicsType | 'simple', EvaluationResult>>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Update evaluations whenever trees change
-  useEffect(() => {
-    const updateEvaluations = async () => {
-      if (engine && trainTree && trainingData?.decisionAttribute) {
-        const trainEval = await engine.evaluateTree(trainingData.instances);
-        setTrainEvaluation(trainEval);
-
-        if (testTree && testData) {
-          const testEval = await engine.evaluateTree(testData.instances);
-          setTestEvaluation(testEval);
-        }
+  const updateOmicsData = useCallback((
+    omicsType: OmicsType | 'simple',
+    dataType: 'training' | 'test',
+    data: Dataset
+  ) => {
+    setOmicsData(prev => ({
+      ...prev,
+      [omicsType]: {
+        ...prev[omicsType],
+        [dataType]: data
       }
-    };
+    }));
+  }, []);
 
-    updateEvaluations();
-  }, [engine, trainTree, testTree, trainingData, testData]);
+  const buildTrees = useCallback(async (config: ExperimentConfig) => {
+    setIsLoading(true);
+    setError(null);
 
-  const buildTestTree = useCallback(
-    async (trainTree: DecisionTree, testInstances: Instance[]): Promise<DecisionTree> => {
-      const cloneElement = (element: Element): Element => {
-        if (element.type === 'leaf') {
-          return {
-            ...element,
-            id: `test-${element.id}`,
-            statistics: TreeUtils.calculateStats([]),
-            classDistribution: {},
-            predictedClass: 'Unknown'
-          };
-        }
+    try {
+      const newEngines: Partial<Record<OmicsType | 'simple', TreeEngine>> = {};
+      const newTrees: Partial<Record<OmicsType | 'simple', DecisionTree>> = {};
+      const newEvaluations: Partial<Record<OmicsType | 'simple', EvaluationResult>> = {};
 
-        return {
-          ...element,
-          id: `test-${element.id}`,
-          statistics: TreeUtils.calculateStats([]),
-          children: element.children.map(cloneElement)
-        };
-      };
+      // Handle single dataset case
+      if (Object.keys(omicsData).length === 1 || config.fusionType === 'multi-test') {
+        const mainData = config.fusionType === 'multi-test' 
+          ? combineDatasets(Object.values(omicsData).map(d => d.training!))
+          : omicsData[Object.keys(omicsData)[0]]?.training;
 
-      const testRoot = cloneElement(trainTree.root);
-      const testTreeStructure: DecisionTree = {
-        ...trainTree,
-        id: `test-${trainTree.id}`,
-        root: testRoot
-      };
+        if (!mainData) throw new Error('No training data available');
 
-      const updateNodeStats = (node: Element, instances: Instance[]) => {
-        const stats = TreeUtils.calculateStats(instances);
-        node.statistics = stats;
-
-        if (node.type === 'leaf') {
-          node.classDistribution = stats.classDistribution;
-          node.predictedClass = Object.entries(stats.classDistribution)
-            .sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Unknown';
-        } else {
-          const splits = TreeUtils.splitInstances(instances, node.test);
-          node.children.forEach((child, index) => {
-            updateNodeStats(child, splits[index]);
-          });
-        }
-      };
-
-      updateNodeStats(testTreeStructure.root, testInstances);
-      return testTreeStructure;
-    },
-    []
-  );
-
-  const buildTrees = useCallback(
-    async (config: ExperimentConfig) => {
-      if (!trainingData) {
-        setError('Training data is required');
-        return;
-      }
-
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // Update training data with the selected decision attribute
-        const updatedTrainingData = {
-          ...trainingData,
+        const updatedData = {
+          ...mainData,
           decisionAttribute: config.decisionAttribute,
-          instances: trainingData.instances.map(instance => ({
+          instances: mainData.instances.map(instance => ({
             ...instance,
             class: instance.values[config.decisionAttribute]
           }))
         };
-
-        // Update test data if it exists
-        const updatedTestData = testData ? {
-          ...testData,
-          decisionAttribute: config.decisionAttribute,
-          instances: testData.instances.map(instance => ({
-            ...instance,
-            class: instance.values[config.decisionAttribute]
-          }))
-        } : null;
 
         const mainAlgorithm = algorithms[config.algorithms[0]];
-        const newTrainTree = await mainAlgorithm.buildTree(updatedTrainingData.instances, config);
-        const newEngine = new TreeEngine(newTrainTree, updatedTrainingData.instances, algorithms);
-        
-        setEngine(newEngine);
-        setTrainTree(newTrainTree);
-        setTrainingData(updatedTrainingData);
+        const tree = await mainAlgorithm.buildTree(updatedData.instances, config);
+        const engine = new TreeEngine(tree, updatedData.instances, algorithms);
+        const evaluation = await engine.evaluateTree(updatedData.instances);
 
-        if (updatedTestData) {
-          const newTestTree = await buildTestTree(newTrainTree, updatedTestData.instances);
-          setTestTree(newTestTree);
-          setTestData(updatedTestData);
-        }
+        newEngines['simple'] = engine;
+        newTrees['simple'] = tree;
+        newEvaluations['simple'] = evaluation;
+      } 
+      // Handle multi-tree fusion
+      else {
+        for (const [type, data] of Object.entries(omicsData)) {
+          if (!data?.training) continue;
 
-        // Calculate initial evaluations
-        const trainEval = await newEngine.evaluateTree(updatedTrainingData.instances);
-        setTrainEvaluation(trainEval);
+          const updatedData = {
+            ...data.training,
+            decisionAttribute: config.decisionAttribute,
+            instances: data.training.instances.map(instance => ({
+              ...instance,
+              class: instance.values[config.decisionAttribute]
+            }))
+          };
 
-        if (updatedTestData) {
-          const testEval = await newEngine.evaluateTree(updatedTestData.instances);
-          setTestEvaluation(testEval);
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error');
-        toast.error('Failed to build tree');
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [trainingData, testData, buildTestTree]
-  );
+          const mainAlgorithm = algorithms[config.algorithms[0]];
+          const tree = await mainAlgorithm.buildTree(updatedData.instances, config);
+          const engine = new TreeEngine(tree, updatedData.instances, algorithms);
+          const evaluation = await engine.evaluateTree(updatedData.instances);
 
-  const applyDistribution = useCallback(
-    async (nodeId: string, test: SplitTest) => {
-      if (!engine || !trainTree) return;
-      try {
-        const updated = await engine.applyDistributionChange(nodeId, test);
-        setTrainTree({ ...updated });
-
-        if (testTree && testData) {
-          const newTestTree = await buildTestTree(updated, testData.instances);
-          setTestTree(newTestTree);
-        }
-      } catch (err) {
-        toast.error('Failed to apply distribution');
-      }
-    },
-    [engine, trainTree, testTree, testData, buildTestTree]
-  );
-
-  const rebuildSubtree = useCallback(
-    async (nodeId: string, algorithm: AlgorithmType, test?: SplitTest) => {
-      if (!engine || !trainTree) return;
-      try {
-        const updated = await engine.rebuildSubtree(nodeId, algorithm, test);
-        setTrainTree({ ...updated });
-
-        if (testTree && testData) {
-          const newTestTree = await buildTestTree(updated, testData.instances);
-          setTestTree(newTestTree);
-        }
-      } catch (err) {
-        toast.error('Failed to rebuild subtree');
-      }
-    },
-    [engine, trainTree, testTree, testData, buildTestTree]
-  );
-
-  const makeLeaf = useCallback(
-    (nodeId: string) => {
-      if (!engine || !trainTree) return;
-      const node = engine.findNodeById(trainTree.root, nodeId);
-      if (!node) return;
-
-      const instances = engine.getInstancesForNode(nodeId);
-      const leaf = TreeUtils.createLeafFromGroup(instances);
-      
-      Object.assign(node, leaf);
-      setTrainTree({ ...trainTree });
-
-      if (testTree && testData) {
-        const testNode = engine.findNodeById(testTree.root, `test-${nodeId}`);
-        if (testNode) {
-          const testInstances = engine.getInstancesForNode(`test-${nodeId}`);
-          const testLeaf = TreeUtils.createLeafFromGroup(testInstances);
-          Object.assign(testNode, testLeaf);
-          setTestTree({ ...testTree });
+          newEngines[type] = engine;
+          newTrees[type] = tree;
+          newEvaluations[type] = evaluation;
         }
       }
-    },
-    [engine, trainTree, testTree, testData]
-  );
 
-  const unfoldLeafOnce = useCallback(
-    async (nodeId: string, algorithm: AlgorithmType) => {
-      if (!engine || !trainTree) return;
-      const node = engine.findNodeById(trainTree.root, nodeId);
-      if (!node || node.type !== 'leaf') return;
+      setEngines(newEngines);
+      setTrees(newTrees);
+      setEvaluations(newEvaluations);
 
-      const instances = engine.getInstancesForNode(nodeId);
-      const newTree = await algorithms[algorithm].buildTree(instances, {
-        ...trainTree.config,
-        maxDepth: 1,
-        algorithms: [algorithm]
-      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      toast.error('Failed to build trees');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [omicsData]);
 
-      Object.assign(node, {...newTree.root, id: node.id });
-      setTrainTree({ ...trainTree });
+  const combineDatasets = (datasets: Dataset[]): Dataset => {
+    if (datasets.length === 0) throw new Error('No datasets to combine');
+    
+    const baseDataset = datasets[0];
+    const combinedAttributes = datasets.reduce((attrs, dataset) => [
+      ...attrs,
+      ...dataset.attributes.map(attr => ({
+        ...attr,
+        name: dataset.omicsType ? `${dataset.omicsType}_${attr.name}` : attr.name
+      }))
+    ], [] as Dataset['attributes']);
 
-      if (testTree && testData) {
-        const testNode = engine.findNodeById(testTree.root, `test-${nodeId}`);
-        if (testNode) {
-          const testInstances = engine.getInstancesForNode(`test-${nodeId}`);
-          const newTestTree = await buildTestTree(newTree, testInstances);
-          Object.assign(testNode, {...newTestTree.root, id: `test-${nodeId}` });
-          setTestTree({ ...testTree });
-        }
-      }
-    },
-    [engine, trainTree, testTree, testData, buildTestTree]
-  );
+    const combinedInstances = baseDataset.instances.map((instance, idx) => {
+      const combinedValues = datasets.reduce((values, dataset) => ({
+        ...values,
+        ...Object.entries(dataset.instances[idx].values).reduce((acc, [key, value]) => ({
+          ...acc,
+          [dataset.omicsType ? `${dataset.omicsType}_${key}` : key]: value
+        }), {})
+      }), {});
 
-  const unfoldLeafFully = useCallback(
-    async (nodeId: string, algorithm: AlgorithmType) => {
-      if (!engine || !trainTree) return;
-      const node = engine.findNodeById(trainTree.root, nodeId);
-      if (!node || node.type !== 'leaf') return;
+      return {
+        ...instance,
+        values: combinedValues
+      };
+    });
 
-      const instances = engine.getInstancesForNode(nodeId);
-      const newTree = await algorithms[algorithm].buildTree(instances, {
-        ...trainTree.config,
-        algorithms: [algorithm]
-      });
+    return {
+      name: 'combined_dataset',
+      attributes: combinedAttributes,
+      instances: combinedInstances
+    };
+  };
 
-      Object.assign(node, {...newTree.root, id: node.id });
-      setTrainTree({ ...trainTree });
+  const applyDistribution = useCallback(async (
+    nodeId: string,
+    test: SplitTest,
+    omicsType: OmicsType | 'simple'
+  ) => {
+    const engine = engines[omicsType];
+    const tree = trees[omicsType];
+    if (!engine || !tree) return;
 
-      if (testTree && testData) {
-        const testNode = engine.findNodeById(testTree.root, `test-${nodeId}`);
-        if (testNode) {
-          const testInstances = engine.getInstancesForNode(`test-${nodeId}`);
-          const newTestTree = await buildTestTree(newTree, testInstances);
-          Object.assign(testNode, {...newTestTree.root, id: `test-${nodeId}` });
-          setTestTree({ ...testTree });
-        }
-      }
-    },
-    [engine, trainTree, testTree, testData, buildTestTree]
-  );
+    try {
+      const updated = await engine.applyDistributionChange(nodeId, test);
+      setTrees(prev => ({
+        ...prev,
+        [omicsType]: { ...updated }
+      }));
+
+      const evaluation = await engine.evaluateTree(omicsData[omicsType]?.training?.instances || []);
+      setEvaluations(prev => ({
+        ...prev,
+        [omicsType]: evaluation
+      }));
+    } catch (err) {
+      toast.error('Failed to apply distribution');
+    }
+  }, [engines, trees, omicsData]);
+
+  const rebuildSubtree = useCallback(async (
+    nodeId: string,
+    algorithm: AlgorithmType,
+    omicsType: OmicsType | 'simple',
+    test?: SplitTest
+  ) => {
+    const engine = engines[omicsType];
+    const tree = trees[omicsType];
+    if (!engine || !tree) return;
+
+    try {
+      const updated = await engine.rebuildSubtree(nodeId, algorithm, test);
+      setTrees(prev => ({
+        ...prev,
+        [omicsType]: { ...updated }
+      }));
+
+      const evaluation = await engine.evaluateTree(omicsData[omicsType]?.training?.instances || []);
+      setEvaluations(prev => ({
+        ...prev,
+        [omicsType]: evaluation
+      }));
+    } catch (err) {
+      toast.error('Failed to rebuild subtree');
+    }
+  }, [engines, trees, omicsData]);
+
+  const makeLeaf = useCallback((nodeId: string, omicsType: OmicsType | 'simple') => {
+    const engine = engines[omicsType];
+    const tree = trees[omicsType];
+    if (!engine || !tree) return;
+
+    const node = engine.findNodeById(tree.root, nodeId);
+    if (!node) return;
+
+    const instances = engine.getInstancesForNode(nodeId);
+    const leaf = TreeUtils.createLeafFromGroup(instances);
+    
+    Object.assign(node, leaf);
+    setTrees(prev => ({
+      ...prev,
+      [omicsType]: { ...tree }
+    }));
+  }, [engines, trees]);
+
+  const unfoldLeafOnce = useCallback(async (
+    nodeId: string,
+    algorithm: AlgorithmType,
+    omicsType: OmicsType | 'simple'
+  ) => {
+    const engine = engines[omicsType];
+    const tree = trees[omicsType];
+    if (!engine || !tree) return;
+
+    const node = engine.findNodeById(tree.root, nodeId);
+    if (!node || node.type !== 'leaf') return;
+
+    const instances = engine.getInstancesForNode(nodeId);
+    const newTree = await algorithms[algorithm].buildTree(instances, {
+      ...tree.config,
+      maxDepth: 1,
+      algorithms: [algorithm]
+    });
+
+    Object.assign(node, { ...newTree.root, id: node.id });
+    setTrees(prev => ({
+      ...prev,
+      [omicsType]: { ...tree }
+    }));
+  }, [engines, trees]);
+
+  const unfoldLeafFully = useCallback(async (
+    nodeId: string,
+    algorithm: AlgorithmType,
+    omicsType: OmicsType | 'simple'
+  ) => {
+    const engine = engines[omicsType];
+    const tree = trees[omicsType];
+    if (!engine || !tree) return;
+
+    const node = engine.findNodeById(tree.root, nodeId);
+    if (!node || node.type !== 'leaf') return;
+
+    const instances = engine.getInstancesForNode(nodeId);
+    const newTree = await algorithms[algorithm].buildTree(instances, {
+      ...tree.config,
+      algorithms: [algorithm]
+    });
+
+    Object.assign(node, { ...newTree.root, id: node.id });
+    setTrees(prev => ({
+      ...prev,
+      [omicsType]: { ...tree }
+    }));
+  }, [engines, trees]);
 
   const value = useMemo(
     () => ({
-      engine,
-      trainingData,
-      testData,
-      trainTree,
-      testTree,
-      trainEvaluation,
-      testEvaluation,
-      setTrainingData,
-      setTestData,
+      engine: engines[Object.keys(engines)[0]] || null,
+      omicsData,
+      trees,
+      evaluations,
+      setOmicsData: updateOmicsData,
       buildTrees,
       applyDistribution,
       rebuildSubtree,
@@ -333,13 +354,11 @@ export const TreeEngineProvider: React.FC<{ children: ReactNode }> = ({ children
       error,
     }),
     [
-      engine,
-      trainingData,
-      testData,
-      trainTree,
-      testTree,
-      trainEvaluation,
-      testEvaluation,
+      engines,
+      omicsData,
+      trees,
+      evaluations,
+      updateOmicsData,
       buildTrees,
       applyDistribution,
       rebuildSubtree,

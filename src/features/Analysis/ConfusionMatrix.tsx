@@ -44,9 +44,14 @@ export const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ result }) => {
       return `rgba(239, 68, 68, ${0.1 + intensity * 0.8})`;
     }
   };
+
+  // Function to format percentage
+  const formatPercentage = (value: number): string => {
+    return (value * 100).toFixed(1) + '%';
+  };
   
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
@@ -65,6 +70,9 @@ export const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ result }) => {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Total
               </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Recall
+              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -81,11 +89,19 @@ export const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ result }) => {
                       backgroundColor: getCellColor(actualClass, predictedClass)
                     }}
                   >
-                    {matrix[actualClass][predictedClass] || 0}
+                    <div className="text-center">
+                      <div>{matrix[actualClass][predictedClass] || 0}</div>
+                      <div className="text-xs text-gray-500">
+                        {formatPercentage((matrix[actualClass][predictedClass] || 0) / rowTotals[actualClass])}
+                      </div>
+                    </div>
                   </td>
                 ))}
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
                   {rowTotals[actualClass]}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {formatPercentage(metrics.recall[actualClass])}
                 </td>
               </tr>
             ))}
@@ -104,6 +120,28 @@ export const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ result }) => {
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
                 {totalInstances}
               </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                {formatPercentage(metrics.macroAvgRecall)}
+              </td>
+            </tr>
+            <tr className="bg-gray-50">
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                Precision
+              </td>
+              {classLabels.map(predictedClass => (
+                <td 
+                  key={predictedClass} 
+                  className="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                >
+                  {formatPercentage(metrics.precision[predictedClass])}
+                </td>
+              ))}
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                -
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                {formatPercentage(metrics.macroAvgPrecision)}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -112,22 +150,22 @@ export const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ result }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="text-sm text-gray-500">Accuracy</div>
-          <div className="text-2xl font-semibold mt-1">{(metrics.accuracy * 100).toFixed(2)}%</div>
+          <div className="text-2xl font-semibold mt-1">{formatPercentage(metrics.accuracy)}</div>
         </div>
         
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="text-sm text-gray-500">Macro Avg Precision</div>
-          <div className="text-2xl font-semibold mt-1">{(metrics.macroAvgPrecision * 100).toFixed(2)}%</div>
+          <div className="text-2xl font-semibold mt-1">{formatPercentage(metrics.macroAvgPrecision)}</div>
         </div>
         
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="text-sm text-gray-500">Macro Avg Recall</div>
-          <div className="text-2xl font-semibold mt-1">{(metrics.macroAvgRecall * 100).toFixed(2)}%</div>
+          <div className="text-2xl font-semibold mt-1">{formatPercentage(metrics.macroAvgRecall)}</div>
         </div>
         
         <div className="bg-white p-4 rounded-lg border border-gray-200">
           <div className="text-sm text-gray-500">Macro Avg F1</div>
-          <div className="text-2xl font-semibold mt-1">{(metrics.macroAvgF1 * 100).toFixed(2)}%</div>
+          <div className="text-2xl font-semibold mt-1">{formatPercentage(metrics.macroAvgF1)}</div>
         </div>
       </div>
       
@@ -161,13 +199,13 @@ export const ConfusionMatrix: React.FC<ConfusionMatrixProps> = ({ result }) => {
                       {cls}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {(metrics.precision[cls] * 100).toFixed(2)}%
+                      {formatPercentage(metrics.precision[cls])}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {(metrics.recall[cls] * 100).toFixed(2)}%
+                      {formatPercentage(metrics.recall[cls])}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {(metrics.f1Score[cls] * 100).toFixed(2)}%
+                      {formatPercentage(metrics.f1Score[cls])}
                     </td>
                   </tr>
                 ))}

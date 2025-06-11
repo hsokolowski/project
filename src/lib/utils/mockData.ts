@@ -1,56 +1,17 @@
 import { Dataset, Instance, Attribute } from '../../types';
 
-// Simple demographic attributes
-const attributes: Attribute[] = [
-  { 
-    name: 'Age', 
-    type: 'continuous', 
-    possibleValues: ['18', '25', '30', '35', '40', '45', '50', '55', '60'] 
-  },
-  { 
-    name: 'Weight', 
-    type: 'continuous', 
-    possibleValues: ['50', '60', '70', '80', '90', '100'] 
-  },
-  { 
-    name: 'Height', 
-    type: 'continuous', 
-    possibleValues: ['150', '160', '170', '180', '190'] 
-  },
-  { 
-    name: 'Blood Pressure', 
-    type: 'continuous', 
-    possibleValues: ['90', '100', '110', '120', '130', '140'] 
-  },
-  { 
-    name: 'Eye Color', 
-    type: 'categorical', 
-    possibleValues: ['Blue', 'Brown', 'Green', 'Hazel'] 
-  },
-  { 
-    name: 'Gender', 
-    type: 'categorical', 
-    possibleValues: ['M', 'F'] 
-  }
+// Simple dataset attributes
+const simpleAttributes: Attribute[] = [
+  { name: 'Age', type: 'continuous', possibleValues: ['18', '25', '30', '35', '40', '45', '50', '55', '60'] },
+  { name: 'Weight', type: 'continuous', possibleValues: ['50', '60', '70', '80', '90', '100'] },
+  { name: 'Height', type: 'continuous', possibleValues: ['150', '160', '170', '180', '190'] },
+  { name: 'Blood Pressure', type: 'continuous', possibleValues: ['90', '100', '110', '120', '130', '140'] },
+  { name: 'Eye Color', type: 'categorical', possibleValues: ['Blue', 'Brown', 'Green', 'Hazel'] },
+  { name: 'Gender', type: 'categorical', possibleValues: ['M', 'F'] }
 ];
 
-// Genomic attributes (100 genes for demonstration)
-const genomicAttributes: Attribute[] = Array.from({ length: 100 }, (_, i) => ({
-  name: `GENE${(i + 1).toString().padStart(3, '0')}`,
-  type: 'continuous',
-  possibleValues: undefined,
-  isGeneExpression: true
-}));
-
-// Disease status attribute for genomic data
-const diseaseAttribute: Attribute = {
-  name: 'Disease_Status',
-  type: 'categorical',
-  possibleValues: ['Healthy', 'Stage_1', 'Stage_2', 'Stage_3']
-};
-
-// Training instances
-const trainingInstances: Instance[] = [
+// Generate deterministic simple data
+const simple_training: Instance[] = [
   { id: 'train-1', values: { Age: 25, Weight: 60, Height: 165, 'Blood Pressure': 110, 'Eye Color': 'Blue', Gender: 'F' } },
   { id: 'train-2', values: { Age: 25, Weight: 75, Height: 180, 'Blood Pressure': 120, 'Eye Color': 'Brown', Gender: 'M' } },
   { id: 'train-3', values: { Age: 35, Weight: 65, Height: 170, 'Blood Pressure': 115, 'Eye Color': 'Green', Gender: 'F' } },
@@ -68,8 +29,7 @@ const trainingInstances: Instance[] = [
   { id: 'train-15', values: { Age: 44, Weight: 83, Height: 181, 'Blood Pressure': 127, 'Eye Color': 'Hazel', Gender: 'M' } }
 ];
 
-// Test instances
-const testInstances: Instance[] = [
+const simple_test: Instance[] = [
   { id: 'test-1', values: { Age: 26, Weight: 62, Height: 166, 'Blood Pressure': 109, 'Eye Color': 'Blue', Gender: 'F' } },
   { id: 'test-2', values: { Age: 33, Weight: 78, Height: 179, 'Blood Pressure': 121, 'Eye Color': 'Brown', Gender: 'M' } },
   { id: 'test-3', values: { Age: 36, Weight: 64, Height: 169, 'Blood Pressure': 114, 'Eye Color': 'Green', Gender: 'F' } },
@@ -82,64 +42,104 @@ const testInstances: Instance[] = [
   { id: 'test-10', values: { Age: 28, Weight: 59, Height: 163, 'Blood Pressure': 107, 'Eye Color': 'Blue', Gender: 'F' } }
 ];
 
-// Generate genomic mock data
-const generateGenomicData = (numSamples: number): Instance[] => {
-  return Array.from({ length: numSamples }, (_, i) => {
-    const values: Record<string, number | string> = {};
-    
-    // Generate random gene expression values
-    genomicAttributes.forEach(attr => {
-      // Generate expression values between -3 and 3 (log2 fold change)
-      values[attr.name] = (Math.random() * 6) - 3;
-    });
-    
-    // Add disease status
-    const rand = Math.random();
-    values['Disease_Status'] = 
-      rand < 0.25 ? 'Healthy' :
-       'Stage_1';
-      //rand < 0.5 ? 'Stage_1' :
-     // rand < 0.75 ? 'Stage_2' : 'Stage_3';
-    
-    return {
-      id: `genomic-${i + 1}`,
-      values
-    };
-  });
-};
+// BIO dataset attributes
+const bioAttributes: Attribute[] = [
+  // Genomic attributes (100 genes)
+  ...Array.from({ length: 100 }, (_, i) => ({
+    name: `GENE${(i + 1).toString().padStart(3, '0')}`,
+    type: 'continuous',
+    isGeneExpression: true
+  })),
+  // Proteomic attributes (50 proteins)
+  ...Array.from({ length: 50 }, (_, i) => ({
+    name: `PROT${(i + 1).toString().padStart(3, '0')}`,
+    type: 'continuous',
+    isProteinLevel: true
+  })),
+  // Metabolomic attributes (30 metabolites)
+  ...Array.from({ length: 30 }, (_, i) => ({
+    name: `MET${(i + 1).toString().padStart(3, '0')}`,
+    type: 'continuous',
+    isMetabolite: true
+  })),
+  // Class attribute
+  { name: 'class', type: 'categorical', possibleValues: ['Healthy', 'At Risk'] }
+];
 
-// Generate genomic datasets
-const genomicTrainingInstances = generateGenomicData(100);
-const genomicTestInstances = generateGenomicData(30);
-
-// Generate datasets with fixed instances
-const generateDataset = (name: string, instances: Instance[], datasetAttributes: Attribute[]): Dataset => {
+// Generate deterministic BIO data
+const generateBioInstance = (id: number, isTest: boolean = false): Instance => {
+  const values: Record<string, number | string> = {};
+  
+  // Generate gene expression values using sine waves
+  for (let i = 0; i < 100; i++) {
+    const baseValue = Math.sin(id * 0.5 + i * 0.1);
+    values[`GENE${(i + 1).toString().padStart(3, '0')}`] = Number(baseValue.toFixed(3));
+  }
+  
+  // Generate protein levels using cosine waves
+  for (let i = 0; i < 50; i++) {
+    const baseValue = Math.cos(id * 0.5 + i * 0.2);
+    values[`PROT${(i + 1).toString().padStart(3, '0')}`] = Number((2.5 + baseValue).toFixed(3));
+  }
+  
+  // Generate metabolite levels using combined waves
+  for (let i = 0; i < 30; i++) {
+    const baseValue = Math.sin(id * 0.5 + i * 0.3) * Math.cos(id * 0.3 + i * 0.2);
+    values[`MET${(i + 1).toString().padStart(3, '0')}`] = Number((5 + baseValue * 2).toFixed(3));
+  }
+  
+  // Deterministic class assignment based on patterns
+  const geneSum = Object.entries(values)
+    .filter(([key]) => key.startsWith('GENE'))
+    .reduce((sum, [, value]) => sum + (value as number), 0);
+  
+  const protSum = Object.entries(values)
+    .filter(([key]) => key.startsWith('PROT'))
+    .reduce((sum, [, value]) => sum + (value as number), 0);
+  
+  const metSum = Object.entries(values)
+    .filter(([key]) => key.startsWith('MET'))
+    .reduce((sum, [, value]) => sum + (value as number), 0);
+  
+  values['class'] = (geneSum + protSum + metSum) > 0 ? 'At Risk' : 'Healthy';
+  
   return {
-    name,
-    attributes: datasetAttributes,
-    instances: instances.map((instance, index) => ({
-      ...instance,
-      id: `${name}-${index + 1}`
-    })),
-    isGenomic: datasetAttributes.some(attr => 'isGeneExpression' in attr)
+    id: `bio-${isTest ? 'test' : 'train'}-${id}`,
+    values
   };
 };
 
-// Export mock datasets
-export const mockTrainingData = generateDataset('training', trainingInstances, attributes);
-export const mockTestData = generateDataset('test', testInstances, attributes);
+// Generate BIO training and test datasets
+const bio_training: Instance[] = Array.from({ length: 50 }, (_, i) => generateBioInstance(i));
+const bio_test: Instance[] = Array.from({ length: 20 }, (_, i) => generateBioInstance(i, true));
 
-// Export genomic mock datasets
-export const mockGenomicTrainingData = generateDataset(
-  'genomic-training',
-  genomicTrainingInstances,
-  [...genomicAttributes, diseaseAttribute]
-);
-export const mockGenomicTestData = generateDataset(
-  'genomic-test',
-  genomicTestInstances,
-  [...genomicAttributes, diseaseAttribute]
-);
+// Export datasets
+export const mockSimpleTrainingData: Dataset = {
+  name: 'simple-training',
+  attributes: simpleAttributes,
+  instances: simple_training
+};
 
-// Export a single mock instance for testing
-export const mockInstance = trainingInstances[0];
+export const mockSimpleTestData: Dataset = {
+  name: 'simple-test',
+  attributes: simpleAttributes,
+  instances: simple_test
+};
+
+export const mockBioTrainingData: Dataset = {
+  name: 'bio-training',
+  attributes: bioAttributes,
+  instances: bio_training,
+  isGenomic: true,
+  isProteomic: true,
+  isMetabolomic: true
+};
+
+export const mockBioTestData: Dataset = {
+  name: 'bio-test',
+  attributes: bioAttributes,
+  instances: bio_test,
+  isGenomic: true,
+  isProteomic: true,
+  isMetabolomic: true
+};
