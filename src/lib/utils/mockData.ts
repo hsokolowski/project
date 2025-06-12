@@ -101,8 +101,9 @@ const generateBioInstance = (id: number, isTest: boolean = false): Instance => {
     .filter(([key]) => key.startsWith('MET'))
     .reduce((sum, [, value]) => sum + (value as number), 0);
   
-  values['class'] = (geneSum + protSum + metSum) > 0 ? 'At Risk' : 'Healthy';
-  
+  //values['class'] = (geneSum + protSum + metSum) > 0 ? 'At Risk' : 'Healthy';
+  values['class'] = id % 5 === 0 ? 'Healthy' : 'At Risk';
+
   return {
     id: `bio-${isTest ? 'test' : 'train'}-${id}`,
     values
