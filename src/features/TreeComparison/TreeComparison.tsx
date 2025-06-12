@@ -10,10 +10,7 @@ import { Layout, Download, Code } from 'lucide-react';
 export const TreeComparison: React.FC = () => {
   const { trees, evaluations, isLoading } = useTreeEngine();
   const [viewMode, setViewMode] = useState<'canvas' | 'flow'>('canvas');
-  const [showStructure, setShowStructure] = useState<{
-    training: boolean;
-    test: boolean;
-  }>({ training: false, test: false });
+  const [showStructure, setShowStructure] = useState<boolean>(false);
   
   const mainTree = trees['simple'] || trees[Object.keys(trees)[0]];
   const mainEvaluation = evaluations['simple'] || evaluations[Object.keys(evaluations)[0]];
@@ -96,11 +93,11 @@ export const TreeComparison: React.FC = () => {
             <div className="border-t pt-4">
               <div className="flex items-center justify-between mb-2">
                 <button
-                  onClick={() => setShowStructure(prev => ({ ...prev, training: !prev.training }))}
+                  onClick={() => setShowStructure(!showStructure)}
                   className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800"
                 >
                   <Code size={16} />
-                  {showStructure.training ? 'Hide' : 'Show'} Tree Structure
+                  {showStructure ? 'Hide' : 'Show'} Tree Structure
                 </button>
                 <button
                   onClick={() => downloadTreeStructure(mainTree, 'training-tree-structure')}
@@ -111,7 +108,7 @@ export const TreeComparison: React.FC = () => {
                 </button>
               </div>
               
-              {showStructure.training && (
+              {showStructure && (
                 <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm">
                   <pre className="text-xs overflow-x-auto h-40 bg-white p-2 rounded border border-gray-200">
                     {JSON.stringify(mainTree.root, null, 2)}
@@ -151,11 +148,11 @@ export const TreeComparison: React.FC = () => {
               <div className="border-t pt-4">
                 <div className="flex items-center justify-between mb-2">
                   <button
-                    onClick={() => setShowStructure(prev => ({ ...prev, test: !prev.test }))}
+                    onClick={() => setShowStructure(!showStructure)}
                     className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800"
                   >
                     <Code size={16} />
-                    {showStructure.test ? 'Hide' : 'Show'} Tree Structure
+                    {showStructure ? 'Hide' : 'Show'} Tree Structure
                   </button>
                   <button
                     onClick={() => downloadTreeStructure(testTree, 'test-tree-structure')}
@@ -166,7 +163,7 @@ export const TreeComparison: React.FC = () => {
                   </button>
                 </div>
                 
-                {showStructure.test && (
+                {showStructure && (
                   <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm">
                     <pre className="text-xs overflow-x-auto h-40 bg-white p-2 rounded border border-gray-200">
                       {JSON.stringify(testTree.root, null, 2)}
